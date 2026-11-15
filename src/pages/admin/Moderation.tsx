@@ -1,0 +1,38 @@
+import { useState } from 'react';
+import { Link } from 'react-router';
+import { Check, CheckCircle2, Eye, FileWarning, MinusCircle, Star, X } from 'lucide-react';
+import { AdminHeading, AdminPageState } from './AdminShared';
+import { ArtworkImage, Empty, Modal, Status } from '../../components/Ui';
+import { useRemote } from '../../lib/hooks';
+import { errText, money, artistStatus } from '../../lib/helpers';
+import { post, patch } from '../../lib/api';
+import { useToast } from '../../contexts/ToastContext';
+import type { ArtistProfile, ArtworkCard } from '../../lib/types';
+
+export function AdminArtistsPage() {
+  const { data, loading, error, reload } = useRemote<ArtistProfile[]>('/api/v1/admin/artists/pending');
+  const { toast } = useToast();
+  const [rejectId, setRejectId] = useState('');
+  const [reason, setReason] = useState('');
+  const [busy, setBusy] = useState(false);
+  const approve = async (id: string) => { setBusy(true); try { await post(`/api/v1/admin/artists/${id}/approve`); toast('Rəssam təsdiqləndi.'); reload(); } catch (e) { toast(errText(e), 'error'); } finally { setBusy(false); } };
+  const reject = async () => { if (!reason.trim()) { toast('Rədd səbəbini daxil edin.', 'error'); return; } setBusy(true); try { await post(`/api/v1/admin/artists/${rejectId}/reject`, { reason }); toast('Rəssam müraciəti rədd edildi.'); setRejectId(''); setReason(''); reload(); } catch (e) { toast(errText(e), 'error'); } finally { setBusy(false); } };
+  return <><AdminHeading title="Rəssam müraciətləri" description="Rəssam olmaq istəyən istifadəçilərin müraciətlərini nəzərdən keçirin." /><AdminPageState loading={loading} error={error} onRetry={reload}>{!data?.length ? <Empty title="Gözləyən müraciət yoxdur" /> : <div className="admin-card-list">{data.map(artist => <div className="moderation-card" key={artist.id}><div className="moderation-img artist-icon"><ArtworkImage src={artist.profileImageUrl} alt={artist.displayName} /></div><div className="moderation-body"><h3>{artist.displayName}</h3><p>{artist.biography || 'Bioqrafiya əlavə edilməyib.'}</p><div className="moderation-meta"><span>{artist.city}</span><Status text={artistStatus(artist.status)} variant="pending" /></div></div><div className="moderation-actions"><button disabled={busy} className="btn btn-primary btn-mini" onClick={() => approve(artist.id)}><Check size={16} /> Təsdiqlə</button><button className="btn btn-danger-light btn-mini" onClick={() => setRejectId(artist.id)}><X size={16} /> Rədd et</button></div></div>)}</div>}</AdminPageState>{rejectId && <Modal title="Rəssam müraciətini rədd et" onClose={() => setRejectId('')}><div className="form-stack"><div className="field"><label>Səbəb</label><textarea value={reason} rows={4} onChange={e => setReason(e.target.value)} placeholder="Rədd səbəbini daxil edin" /></div><button disabled={busy} className="btn btn-danger" onClick={reject}>Müraciəti rədd et</button></div></Modal>}</>;
+}
+export function AdminArtworksPage() {
+  const { data, loading, error, reload } = useRemote<ArtworkCard[]>('/api/v1/admin/artworks/pending');
+  const { toast } = useToast();
+  const [decision, setDecision] = useState<{ id: string; action: string } | null>(null);
+  const [reason, setReason] = useState('');
+  const [busy, setBusy] = useState(false);
+  const moderate = async (id: string, action: string, reasonValue?: string) => { setBusy(true); try { await post(`/api/v1/admin/artworks/${id}/moderate`, { action, reason: reasonValue || null }); toast('Əsərin statusu yeniləndi.'); setDecision(null); setReason(''); reload(); } catch (e) { toast(errText(e), 'error'); } finally { setBusy(false); } };
+  return <><AdminHeading title="Əsərlərin moderasiyası" description="Əsərləri təsdiqləyin və ya düzəliş üçün rəssama qaytarın." /><AdminPageState loading={loading} error={error} onRetry={reload}>{!data?.length ? <Empty title="Təsdiq gözləyən əsər yoxdur" /> : <div className="admin-card-list">{data.map(item => <div className="moderation-card" key={item.id}><div className="moderation-img"><ArtworkImage src={item.mainImageUrl} alt={item.title} /></div><div className="moderation-body"><h3>{item.title}</h3><p>{item.artistName} · {item.city}</p><b>{money(item.price)}</b></div><div className="moderation-actions"><button disabled={busy} className="btn btn-primary btn-mini" onClick={() => moderate(item.id, 'approve')}><CheckCircle2 size={16} /> Təsdiqlə</button><button className="btn btn-outline btn-mini" onClick={() => setDecision({ id: item.id, action: 'changes' })}><FileWarning size={16} /> Düzəliş</button><button className="btn btn-danger-light btn-mini" onClick={() => setDecision({ id: item.id, action: 'reject' })}><X size={16} /> Rədd et</button></div></div>)}</div>}</AdminPageState>{decision && <Modal title={decision.action === 'reject' ? 'Əsəri rədd et' : 'Düzəliş tələb et'} onClose={() => setDecision(null)}><div className="form-stack"><div className="field"><label>Səbəb</label><textarea required rows={5} value={reason} onChange={e => setReason(e.target.value)} placeholder="Rəssama bildiriləcək səbəb" /></div><button disabled={busy || !reason.trim()} className="btn btn-primary" onClick={() => moderate(decision.id, decision.action, reason)}>Qərarı təsdiqlə</button></div></Modal>}</>;
+}
+export function AdminFeaturedPage() {
+  const { toast } = useToast();
+  const [artworkId, setArtworkId] = useState('');
+  const [artistId, setArtistId] = useState('');
+  const [busy, setBusy] = useState(false);
+  const update = async (type: 'artworks' | 'artists', id: string, featured: boolean) => { if (!id.trim()) { toast('ID daxil edin.', 'error'); return; } setBusy(true); try { await patch(`/api/v1/admin/home/featured-${type}/${id.trim()}`, { featured }); toast('Seçilmiş məzmun yeniləndi.'); } catch (e) { toast(errText(e), 'error'); } finally { setBusy(false); } };
+  return <><AdminHeading title="Seçilmiş məzmun" description="Ana səhifədə ön plana çıxacaq əsər və rəssamları idarə edin." /><div className="admin-two-cols"><div className="admin-panel"><div className="panel-icon"><Star size={25} /></div><h2>Seçilmiş əsərlər</h2><p className="muted">Təsdiqlənmiş əsərin ID-sini daxil edin. ID-ni kataloqdan və ya əsər məlumatlarından əldə edə bilərsiniz.</p><div className="field"><label>Əsər ID (GUID)</label><input value={artworkId} onChange={e => setArtworkId(e.target.value)} placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx" /></div><div className="row-buttons"><button disabled={busy} onClick={() => update('artworks', artworkId, true)} className="btn btn-primary"><Star size={16} /> Seçilmiş et</button><button disabled={busy} onClick={() => update('artworks', artworkId, false)} className="btn btn-outline"><MinusCircle size={16} /> Çıxar</button></div></div><div className="admin-panel"><div className="panel-icon"><Star size={25} /></div><h2>Seçilmiş rəssamlar</h2><p className="muted">Təsdiqlənmiş rəssam profilinin ID-sini daxil edin.</p><div className="field"><label>Rəssam ID (GUID)</label><input value={artistId} onChange={e => setArtistId(e.target.value)} placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx" /></div><div className="row-buttons"><button disabled={busy} onClick={() => update('artists', artistId, true)} className="btn btn-primary"><Star size={16} /> Seçilmiş et</button><button disabled={busy} onClick={() => update('artists', artistId, false)} className="btn btn-outline"><MinusCircle size={16} /> Çıxar</button></div></div></div><div className="panel help-panel"><Eye size={19} /><span>Hazırda backend seçilmiş məzmun üçün tam admin siyahı endpoint-i vermir. Bu ekranda ID əsasında idarəetmə var. Tam seçmə siyahısı üçün ayrıca backend endpoint-i tələb olunur.</span></div></>;
+}
